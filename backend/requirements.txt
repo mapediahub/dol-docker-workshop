@@ -6,3 +6,4 @@ sqlalchemy
 rasterio
 geojson
 python-multipart
+rio-tiler
