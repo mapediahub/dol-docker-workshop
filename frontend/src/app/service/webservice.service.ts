@@ -25,5 +25,16 @@ export class WebserviceService {
     });
   }
 
+  async getGeojson(layer: any) {
+    return new Promise((res, rej) => {
+      this.http
+        .get(`${this.base_path}geojson/${layer}`)
+        .subscribe(
+          (data: any) => res(data),
+          (err: any) => rej(err)
+        );
+    });
+  }
+
 
 }
