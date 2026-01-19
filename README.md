@@ -179,3 +179,35 @@ services:
 3.  **ไฟล์ `legacy-app`:** เตรียมโค้ด PHP หรือ HTML ง่ายๆ ที่มีจุดบกพร่องเล็กน้อย (เช่น Hardcode Database IP) เพื่อให้ผู้เรียนได้ฝึกแก้ตอนทำ Migration ครับ
 
 ```
+
+
+nginx 
+```
+
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # บีบอัดไฟล์เพื่อให้โหลดเร็วขึ้น
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    location / {
+        # สำคัญ: ถ้าหาไฟล์ไม่เจอ ให้วิ่งกลับไปที่ index.html (SPA Support)
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Optional: ตั้งค่า Cache สำหรับไฟล์ static
+    location ~* \.(?:ico|css|js|gif|jpe?g|png)$ {
+        expires 1y;
+        add_header Cache-Control "public";
+    }
+}
+
+```
+
+```
+chmod +x backend/gisdata/import_shapes.sh
+```

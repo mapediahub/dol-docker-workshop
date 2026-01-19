@@ -1,8 +1,8 @@
 import os
-import asyncpg
-from fastapi import FastAPI
+import asyncpg #type: ignore 
+from fastapi import FastAPI #type: ignore
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def get_db_connection():
     try:

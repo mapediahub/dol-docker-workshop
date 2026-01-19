@@ -14,18 +14,16 @@ export class WebserviceService {
     public http: HttpClient,
   ) { }
 
-  
+  async getBounds(filepath: any) {
+    return new Promise((res, rej) => {
+      this.http
+        .get(`${this.base_path}bounds/${filepath}`)
+        .subscribe(
+          (data: any) => res(data),
+          (err: any) => rej(err)
+        );
+    });
+  }
 
-
-  // async getBounds(data: any) {
-  //   return new Promise((res, rej) => {
-  //     this.http
-  //       .post(this.base_path + `simulate-water`, data, this.httpOptions)
-  //       .subscribe(
-  //         (data: any) => res(data),
-  //         (err: any) => rej(err)
-  //       );
-  //   });
-  // }
 
 }

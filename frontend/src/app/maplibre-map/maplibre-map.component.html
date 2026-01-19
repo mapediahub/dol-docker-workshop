@@ -1,1 +1,11 @@
-<p>maplibre-map works!</p>
+<div id="map" class="map-container"></div>
+
+<div class="layer-control">
+    <h3>Map Layers</h3>
+    <div *ngFor="let layer of control_layer" class="layer-item">
+        <label>
+            <input type="checkbox" [checked]="layer.visible" (change)="toggleLayer(layer, $event)" />
+            {{ layer.name }}
+        </label>
+    </div>
+</div>

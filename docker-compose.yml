@@ -1,6 +1,25 @@
-version: '3.8'
-
 services:
+  db:
+    build: ./db                     
+    platform: linux/amd64
+    container_name: postgis-db
+    restart: always
+    # ไม่ต้องใช้ env_file แล้ว ให้ใช้ environment เพื่อจับคู่ตัวแปรทีละตัว
+    environment:
+      # [ชื่อใน Container] : [ชื่อใน .env ของคุณ]
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      # Map Port ออกมาข้างนอก (ใช้ DB_PORT หรือจะ Hardcode ก็ได้)
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./backend/gisdata:/gisdata
+      - ./backend/gisdata/import_shapes.sh:/docker-entrypoint-initdb.d/import_shapes.sh
+    networks:
+      - app-network
+
   fastapi:
     build: ./backend
     container_name: fastapi-backend
@@ -8,19 +27,29 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    environment:
+      # ใช้ตัวแปรจาก .env ของคุณมาประกอบเป็น URL ได้เลย
+      # หมายเหตุ: host ต้องเป็น 'db' และ port ต้องเป็น '5432' (Internal Port ของ Docker)
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
     networks:
       - app-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - db
 
-  # webapp:
-  #   build: ./frontend
-  #   container_name: angular-webapp
-  #   ports:
-  #     - "80:80"
-  #   depends_on:
-  #     - fastapi
-  #   networks:
-  #     - app-network
+  webapp:
+    build: ./frontend
+    container_name: angular-webapp
+    ports:
+      - "80:80"
+    depends_on:
+      - fastapi
+    networks:
+      - app-network
 
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  postgis_data:
