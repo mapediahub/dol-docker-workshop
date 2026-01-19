@@ -8,6 +8,7 @@ from fastapi.responses import Response,StreamingResponse #type: ignore
 from rasterio.warp import transform_bounds #type: ignore
 from rio_tiler.colormap import cmap #type: ignore
 import asyncpg  #type: ignore
+
 app = FastAPI()
 
 app.add_middleware(

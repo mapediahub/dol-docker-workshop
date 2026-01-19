@@ -4,14 +4,11 @@ services:
     platform: linux/amd64
     container_name: postgis-db
     restart: always
-    # ไม่ต้องใช้ env_file แล้ว ให้ใช้ environment เพื่อจับคู่ตัวแปรทีละตัว
     environment:
-      # [ชื่อใน Container] : [ชื่อใน .env ของคุณ]
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
     ports:
-      # Map Port ออกมาข้างนอก (ใช้ DB_PORT หรือจะ Hardcode ก็ได้)
       - "${DB_PORT}:5432"
     volumes:
       - postgis_data:/var/lib/postgresql/data
@@ -23,13 +20,13 @@ services:
   fastapi:
     build: ./backend
     container_name: fastapi-backend
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
+    expose:            # (Optional) ระบุไว้เพื่อบอกว่า container นี้เปิด port นี้สำหรับ internal network
+      - "8000"
     volumes:
       - ./backend:/app
     environment:
-      # ใช้ตัวแปรจาก .env ของคุณมาประกอบเป็น URL ได้เลย
-      # หมายเหตุ: host ต้องเป็น 'db' และ port ต้องเป็น '5432' (Internal Port ของ Docker)
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
     networks:
       - app-network
