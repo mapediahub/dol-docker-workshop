@@ -1,213 +1,197 @@
-# Docker Workshop Day2
+# Workshop: DOL Docker Workshop
+
+โปรเจกต์นี้เป็นตัวอย่างการสร้าง Web Application ที่ประกอบด้วย Frontend, Backend และ Database โดยใช้ Docker ในการจำลองสภาพแวดล้อม (Containerization) เพื่อให้ง่ายต่อการ Deploy และการสอน
+
+## 📂 โครงสร้างโปรเจกต์ (Project Structure)
+
+โครงสร้างไฟล์และโฟลเดอร์หลักของโปรเจกต์ประกอบด้วย:
+
+```
+.
+├── .env                    # ไฟล์เก็บ Environment Variables (เช่น รหัสผ่าน Database)
+├── docker-compose.yml      # ไฟล์หลักสำหรับจัดการ Service ทั้งหมด (DB, Backend, Frontend)
+├── backend/                # Source code ส่วน Backend (FastAPI)
+│   ├── Dockerfile          # วิธีการสร้าง Image ของ Backend
+│   ├── main.py             # โค้ดหลักของ FastAPI
+│   ├── database.py         # โค้ดเชื่อมต่อ Database
+│   ├── requirements.txt    # รายชื่อ Python package ที่ต้องใช้
+│   └── gisdata/            # โฟลเดอร์เก็บข้อมูล GIS และ script import
+├── frontend/               # Source code ส่วน Frontend (Angular)
+│   ├── Dockerfile          # วิธีการสร้าง Image ของ Frontend
+│   └── ... (Angular files)
+└── db/                     # ส่วนจัดการ Database
+    └── Dockerfile          # วิธีการสร้าง Image ของ PostGIS พร้อมเครื่องมือเสริม
+```
 
 ---
 
-```markdown
-# 🐳 Docker Orchestration & Real-world Project Workshop
+## 🛠️ ขั้นตอนการสร้าง (Step-by-Step Guide)
 
-ยินดีต้อนรับสู่ Workshop "Orchestration & Real-world Project" ในเซสชั่นนี้เราจะเน้นการใช้งาน Docker Compose เพื่อจัดการ Container หลายตัวพร้อมกัน และลงมือทำโปรเจกต์จริง (Capstone Project) ที่เกี่ยวข้องกับระบบ GIS และการย้ายระบบเก่า (Migration)
+เนื้อหาส่วนนี้อธิบายไฟล์สำคัญที่ใช้ในการสร้าง Container สำหรับแต่ละส่วน
 
----
+### 1. การตั้งค่า Environment Variables (`.env`)
+เราจะแยกค่า configuration ต่างๆ เช่น ชื่อผู้ใช้ รหัสผ่าน หรือชื่อ Database ออกมาไว้ในไฟล์ `.env` เพื่อความปลอดภัยและแก้ไขง่าย
 
-## 🗓️ Agenda
+**ไฟล์:** `.env`
+```env
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=gisdb
+DB_PORT=3456
+```
 
-| เวลา | หัวข้อ | รายละเอียด |
-|---|---|---|
-| **09:00 - 10:30** | **Session 5: Advanced Build Techniques** | Multi-stage Builds, Environment Variables |
-| **10:45 - 12:00** | **Session 6: Docker Compose** | Concept, YAML Structure, Commands |
-| **13:00 - 16:00** | **Session 7: Capstone Project** | GIS Stack Implementation & Legacy Migration |
+### 2. ส่วน Database (PostGIS) (`db/`)
+เราใช้ **PostGIS** ซึ่งเป็น PostgreSQL extension สำหรับจัดการข้อมูลทางภูมิศาสตร์ (GIS)
+ไฟล์ `db/Dockerfile` จะทำการดึง Image หลักมาและติดตั้งเครื่องมือเพิ่มเติม เช่น `postgis` client tools เพื่อให้สามารถใช้คำสั่ง `shp2pgsql` ได้
 
----
-
-## 🛠️ Prerequisites (สิ่งที่ต้องเตรียม)
-* Docker Desktop ติดตั้งเรียบร้อย
-* Visual Studio Code (หรือ Editor ที่ถนัด)
-* Source Code ตั้งต้น (Clone จาก Repository นี้)
-
----
-
-## 🚀 Session 5: Advanced Build Techniques (09:00 - 10:30)
-
-### 1. Multi-stage Builds
-**Objective:** ลดขนาด Docker Image ให้เล็กที่สุด (Small Footprint) เพื่อประหยัดพื้นที่และเพิ่มความปลอดภัย
-
-* **Concept:** การแยก Stage `Build` (ที่มี Compiler/Tools) ออกจาก Stage `Run` (ที่มีแค่ Runtime)
-* **Workshop:** แก้ไข `Dockerfile` ของแอปพลิเคชันตัวอย่าง
-
-**ตัวอย่าง Dockerfile (Multi-stage):**
+**ไฟล์:** `db/Dockerfile`
 ```dockerfile
-# Stage 1: Build
-FROM node:18 AS builder
+FROM postgis/postgis:15-3.3
+
+# ติดตั้ง PostGIS client tools (ที่มี shp2pgsql) ในฐานะ Root ตอน Build Image
+RUN apt-get update \
+    && apt-get install -y postgis \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+### 3. ส่วน Backend (FastAPI) (`backend/`)
+Backend เขียนด้วย **Python (FastAPI)** ทำหน้าที่ให้บริการ API และเชื่อมต่อกับ Database
+ไฟล์ `backend/Dockerfile` จะทำการติดตั้ง Python, Library ที่จำเป็นสำหรับ GIS (GDAL), และติดตั้ง Python dependencies
+
+**ไฟล์:** `backend/Dockerfile`
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# ติดตั้ง System Dependencies สำหรับ GIS (GDAL)
+RUN apt-get update && apt-get install -y \
+    gdal-bin \
+    libgdal-dev \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# ตั้งค่า Environment ให้มองเห็น GDAL header files
+ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
+ENV C_INCLUDE_PATH=/usr/include/gdal
+
+# คัดลอกและติดตั้ง Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# คัดลอก Source Code ทั้งหมดเข้า Container
+COPY . .
+
+# คำสั่งรัน Server
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--reload", "--port", "8000"]
+```
+
+### 4. ส่วน Frontend (Angular + Nginx) (`frontend/`)
+Frontend เขียนด้วย **Angular**
+ไฟล์ `frontend/Dockerfile` ใช้เทคนิค **Multi-stage Build** เพื่อให้ Image มีขนาดเล็กที่สุด:
+1.  **Stage 1 (Build)**: ใช้ Node.js เพื่อ Compile code Angular ให้เป็นไฟล์ HTML/JS/CSS (Production Build)
+2.  **Stage 2 (Run)**: ใช้ Nginx (Web Server ขนาดเล็ก) เพื่อให้บริการไฟล์ที่ Build มาได้จาก Stage 1
+
+**ไฟล์:** `frontend/Dockerfile`
+```dockerfile
+# Stage 1: Build Angular App
+FROM node:18 AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN npm run build
+RUN npm run build -- --configuration production
 
-# Stage 2: Run (Production)
-FROM node:18-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY package*.json ./
-RUN npm install --production
-CMD ["node", "dist/main.js"]
-
+# Stage 2: Serve with Nginx
+FROM nginx:alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist/frontend/browser /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
 ```
 
-### 2. Environment Variables (.env)
+### 5. การรวมทุกอย่างด้วย Docker Compose (`docker-compose.yml`)
+ไฟล์นี้คือกุญแจสำคัญที่จะสั่งให้ทั้ง 3 ส่วน (Database, Backend, Frontend) ทำงานร่วมกัน เป็นเสมือนวงดนตรีที่เล่นพร้อมกัน
 
-**Objective:** แยก Config ออกจาก Code เพื่อความยืดหยุ่นและความปลอดภัย
-
-* สร้างไฟล์ `.env`
-* การส่งค่าผ่าน flag `--env-file`
-* การเรียกใช้ใน Code (เช่น `process.env.DB_HOST`)
-
----
-
-## 🐙 Session 6: Docker Compose (10:45 - 12:00)
-
-### 1. Concept & Structure
-
-ทำไมต้องใช้ Docker Compose? -> *จัดการหลาย Container (Services) ได้ในคำสั่งเดียว*
-
-โครงสร้างหลักของ `docker-compose.yml`:
-
-1. **Services:** นิยาม Container แต่ละตัว (Web, DB)
-2. **Networks:** การเชื่อมต่อสื่อสารระหว่าง Container
-3. **Volumes:** พื้นที่เก็บข้อมูลถาวร
-
-### 2. Workshop: Convert Lab 1 to Compose
-
-แปลงคำสั่ง `docker run` ยาวๆ ให้เป็นไฟล์ `docker-compose.yml`
-
-**Essential Commands:**
-
-```bash
-docker-compose up -d       # สร้างและรัน Container (Background)
-docker-compose logs -f     # ดู Logs แบบ Real-time
-docker-compose ps          # ดูสถานะ Services
-docker-compose down        # หยุดและลบ Container/Network
-
-```
-
----
-
-## 🌍 Session 7: Capstone Project (13:00 - 16:00)
-
-### Part 1: Dockerizing GIS Stack (ระบบแผนที่ใหม่)
-
-เราจะสร้างระบบ GIS ที่ประกอบด้วย 4 Services หลัก เชื่อมต่อกันด้วย Docker Network
-
-#### 🏗️ Architecture Overview
-
-1. **Database:** PostGIS (เก็บข้อมูล Vector/Spatial)
-2. **Backend:** Python/Node.js + GDAL (API & Processing)
-3. **Raster Storage:** Bind Mount (เก็บไฟล์ภาพถ่ายดาวเทียม)
-4. **Frontend:** Web Map Lib (Leaflet/MapLibre)
-
-#### 📝 Steps
-
-**Service 1: Spatial Database (PostGIS)**
-
-* Image: `postgis/postgis`
-* Task: Config Environment (`POSTGRES_USER`, `POSTGRES_DB`) และเตรียม Script โหลด Shapefile
-
-**Service 2: Map Service (Backend)**
-
-* Language: Python (FastAPI) หรือ Node.js (Express)
-* Dockerfile Requirement: ติดตั้ง System Dependencies (`libgdal-dev`)
-* Task: เขียน API Endpoint `/search` และ `/wms`
-
-**Service 3: Raster Data Management**
-
-* Type: **Volume (Bind Mounts)**
-* Task: แชร์โฟลเดอร์ `/data/raster` จาก Host เข้าสู่ Container เพื่อให้ Backend อ่านไฟล์ภาพขนาดใหญ่ได้โดยไม่ต้อง Copy เข้า Image
-
-**Service 4: Frontend Visualization**
-
-* Task: เชื่อมต่อ API ผ่านชื่อ Service (Internal DNS) เช่น `http://backend:3000`
-
----
-
-### Part 2: Migrating Legacy Web to Docker
-
-จำลองสถานการณ์ลูกค้าต้องการย้ายเว็บเก่า (Legacy) ขึ้น Docker
-
-#### 🔍 Analysis Phase
-
-1. **Dependencies:** เช็ค Version ของ PHP/Node.js เก่า
-2. **Ports:** เช็ค Port ที่ใช้งาน (80, 8080)
-3. **Data:** ระบุโฟลเดอร์ที่เก็บไฟล์ Upload
-
-#### 🛠️ Workshop Tasks
-
-1. เขียน `Dockerfile` จาก Source Code เดิม
-2. แยก **Config** (db connection) ออกมาเป็น Environment Variable
-3. แยก **Uploads Folder** ออกมาเป็น Volume (เพื่อให้ข้อมูลไม่หายเมื่อ Restart)
+**ไฟล์:** `docker-compose.yml`
+*   **Services**: นิยามบริการ 3 ตัวคือ `db`, `fastapi`, `webapp`
+*   **Build**: ระบุตำแหน่งโฟลเดอร์ที่มี Dockerfile ของแต่ละ service
+*   **Environment**: ดึงค่าจากไฟล์ `.env` มาใช้
+*   **Volumes**: การ map ข้อมูลใน Container ออกมาเก็บไว้ที่เครื่องเรา (เพื่อให้ข้อมูลไม่หายเมื่อปิด Container) เช่น ข้อมูล Database
+*   **Networks**: สร้างวง Network ให้ Container คุยกันเองได้ (เช่น Backend เรียกหา Database ด้วยชื่อ `db` ได้เลย)
 
 ```yaml
-# ตัวอย่าง snippet สำหรับ Legacy App
 services:
-  legacy-web:
-    build: ./legacy-source
+  db:
+    build: ./db             # สร้างจาก Dockerfile ใน folder db
+    container_name: postgis-db
+    environment:            # ใช้ตัวแปรจาก .env
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"   # Map port ออกมาข้างนอก
     volumes:
-      - ./uploads:/var/www/html/uploads # Persist user uploads
+      - postgis_data:/var/lib/postgresql/data  # เก็บข้อมูลถาวร
+
+  fastapi:
+    build: ./backend        # สร้างจาก Dockerfile ใน folder backend
+    depends_on:
+      - db                  # รอให้ db รันก่อน
     environment:
-      - DB_HOST=db
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
 
+  webapp:
+    build: ./frontend       # สร้างจาก Dockerfile ใน folder frontend
+    ports:
+      - "80:80"             # เข้าเว็บผ่าน port 80 (http://localhost)
+    depends_on:
+      - fastapi             # รอให้ backend รันก่อน
 ```
 
 ---
 
-## 📚 Resources & References
+## 🚀 วิธีการรัน (How to Run)
 
-* [Docker Compose Documentation](https://docs.docker.com/compose/)
-* [PostGIS Image](https://hub.docker.com/r/postgis/postgis)
-* [GDAL Documentation](https://gdal.org/)
+1.  ตรวจสอบว่าในเครื่องมี **Docker** และ **Docker Compose** ติดตั้งอยู่
+2.  เปิด Terminal (MacOS/Linux) หรือ PowerShell/CMD (Windows) แล้วเข้าไปที่โฟลเดอร์โปรเจกต์
+3.  รันคำสั่งเพื่อสร้าง (Build) และเริ่มทำงาน (Start) แบบ Background (`-d`):
+
+    ```bash
+    docker-compose up --build -d
+    ```
+
+4.  รอจนกว่าทุก Container จะสถานะเป็น `Running` (ตรวจสอบได้ด้วยคำสั่ง `docker-compose ps`)
 
 ---
 
-*Happy Dockering!* 🐳
+## 🌐 การใช้งาน (Access)
 
-```
+| บริการ (Service) | URL | รายละเอียด |
+| :--- | :--- | :--- |
+| **Web Application** | [http://localhost](http://localhost) | หน้าเว็บหลัก (Frontend) |
+| **API Backend** | [http://localhost:8000](http://localhost:8000) | Root endpoint ของ API |
+| **API Docs (Swagger)**| [http://localhost:8000/docs](http://localhost:8000/docs) | เอกสารและทดสอบ API |
+| **Database** | `localhost:3456` | เชื่อมต่อผ่าน PGAdmin หรือ DBeaver |
 
-### ข้อแนะนำเพิ่มเติมสำหรับการเตรียมสอน (Next Steps)
+---
 
-หากคุณต้องการให้การสอนลื่นไหลที่สุด ผมแนะนำให้เตรียม **"Skeleton Code"** ไว้ให้ผู้เรียนล่วงหน้าครับ:
-1.  **โฟลเดอร์ `lab-starter`:** เตรียม Source Code (Node.js/Python) แบบง่ายๆ ที่ยังไม่มี Dockerfile
-2.  **โฟลเดอร์ `gis-data`:** เตรียมไฟล์ Shapefile หรือ GeoJSON ตัวอย่าง และไฟล์ภาพ Raster (เช่น .tif) ใส่ไว้ให้เลย ผู้เรียนจะได้ไม่ต้องเสียเวลาหาข้อมูล
-3.  **ไฟล์ `legacy-app`:** เตรียมโค้ด PHP หรือ HTML ง่ายๆ ที่มีจุดบกพร่องเล็กน้อย (เช่น Hardcode Database IP) เพื่อให้ผู้เรียนได้ฝึกแก้ตอนทำ Migration ครับ
+## 🛑 คำสั่งจัดการอื่นๆ (Utility Commands)
 
-```
-
-
-nginx 
-```
-
-server {
-    listen 80;
-    server_name localhost;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # บีบอัดไฟล์เพื่อให้โหลดเร็วขึ้น
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    location / {
-        # สำคัญ: ถ้าหาไฟล์ไม่เจอ ให้วิ่งกลับไปที่ index.html (SPA Support)
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Optional: ตั้งค่า Cache สำหรับไฟล์ static
-    location ~* \.(?:ico|css|js|gif|jpe?g|png)$ {
-        expires 1y;
-        add_header Cache-Control "public";
-    }
-}
-
-```
-
-```
-chmod +x backend/gisdata/import_shapes.sh
-```
+*   **หยุดการทำงาน**:
+    ```bash
+    docker-compose down
+    ```
+*   **หยุดการทำงานและลบ Volumes (ข้อมูล Database จะหาย)**:
+    ```bash
+    docker-compose down -v
+    ```
+*   **ดู Logs ของทุก Service**:
+    ```bash
+    docker-compose logs -f
+    ```
+*   **ดู Logs เฉพาะ Service (เช่น backend)**:
+    ```bash
+    docker-compose logs -f fastapi
+    ```
