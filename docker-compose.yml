@@ -16,7 +16,6 @@ services:
       - ./backend/gisdata/import_shapes.sh:/docker-entrypoint-initdb.d/import_shapes.sh
     networks:
       - app-network
-
   fastapi:
     build: ./backend
     container_name: fastapi-backend
@@ -33,7 +32,6 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - db
-
   webapp:
     build: ./frontend
     container_name: angular-webapp
