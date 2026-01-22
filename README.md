@@ -93,6 +93,35 @@ Frontend เขียนด้วย **Angular**
 1.  **Stage 1 (Build)**: ใช้ Node.js เพื่อ Compile code Angular ให้เป็นไฟล์ HTML/JS/CSS (Production Build)
 2.  **Stage 2 (Run)**: ใช้ Nginx (Web Server ขนาดเล็ก) เพื่อให้บริการไฟล์ที่ Build มาได้จาก Stage 1
 
+**ไฟล์:** `frontend/nginx.conf`
+```nginx
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    location /api/ {
+        # ส่งต่อ request ไปยัง service name "fastapi" ที่ port 8000
+        # เครื่องหมาย / ท้าย url สำคัญมาก (URL Rewrite)
+        # มันจะเปลี่ยนจาก /api/users เป็น /users เมื่อส่งไปถึง FastAPI
+        proxy_pass http://fastapi:8000; 
+        
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
 **ไฟล์:** `frontend/Dockerfile`
 ```dockerfile
 # Stage 1: Build Angular App
@@ -124,30 +153,52 @@ CMD ["nginx", "-g", "daemon off;"]
 ```yaml
 services:
   db:
-    build: ./db             # สร้างจาก Dockerfile ใน folder db
+    build: ./db                     
+    platform: linux/amd64
     container_name: postgis-db
-    environment:            # ใช้ตัวแปรจาก .env
+    restart: always
+    environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
     ports:
-      - "${DB_PORT}:5432"   # Map port ออกมาข้างนอก
+      - "${DB_PORT}:5432"
     volumes:
-      - postgis_data:/var/lib/postgresql/data  # เก็บข้อมูลถาวร
-
+      - postgis_data:/var/lib/postgresql/data
+      - ./backend/gisdata:/gisdata
+      - ./backend/gisdata/import_shapes.sh:/docker-entrypoint-initdb.d/import_shapes.sh
+    networks:
+      - app-network
   fastapi:
-    build: ./backend        # สร้างจาก Dockerfile ใน folder backend
-    depends_on:
-      - db                  # รอให้ db รันก่อน
+    build: ./backend
+    container_name: fastapi-backend
+    expose: 
+      - "8000"
+    volumes:
+      - ./backend:/app
     environment:
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
-
-  webapp:
-    build: ./frontend       # สร้างจาก Dockerfile ใน folder frontend
-    ports:
-      - "80:80"             # เข้าเว็บผ่าน port 80 (http://localhost)
+    networks:
+      - app-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
-      - fastapi             # รอให้ backend รันก่อน
+      - db
+  webapp:
+    build: ./frontend
+    container_name: angular-webapp
+    ports:
+      - "80:80"
+    depends_on:
+      - fastapi
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgis_data:
 ```
 
 ---
